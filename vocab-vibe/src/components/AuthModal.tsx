@@ -32,47 +32,27 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, onSignIn }
     setLoading(true);
 
     try {
-      // 1. Verify auth credentials
-      const { data: authUser, error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
       });
 
-      if (authError) {
-        setError(authError.message);
+      if (error) {
+        if (error.message === 'Email not confirmed') {
+          setError('Please confirm your email before signing in.');
+        } else {
+          setError(error.message);
+        }
         return;
       }
 
-      // 2. Check profile exists
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', email)
-        .single();
-
-      if (profileError || !profile) {
-        console.error('Profile verification failed:', profileError);
-        setError('Account verification failed');
-        return;
+      if (data.user) {
+        onSignIn();
+        onClose();
       }
-
-      // 3. Verify email confirmation
-      if (authUser.user && !authUser.user.email_confirmed_at) {
-        const { error: resendError } = await supabase.auth.resend({
-          type: 'signup',
-          email,
-        });
-        setError('Please confirm your email first. New confirmation email sent.');
-        return;
-      }
-
-      // 4. Success
-      onSignIn();
-      onClose();
-
     } catch (error) {
-      console.error('Sign in error:', error);
-      setError('Authentication failed');
+      console.error('Sign-in error:', error);
+      setError('An error occurred during sign-in.');
     } finally {
       setLoading(false);
     }
@@ -82,44 +62,39 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, onSignIn }
     e.preventDefault();
     setError(null);
     setLoading(true);
-
+  
     try {
-      // 1. Create auth user
+      // Step 1: Sign up the user
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       });
-
+  
       if (signUpError) {
         setError(signUpError.message);
         return;
       }
-
+  
       if (data.user) {
-        // 2. Create profile
+        // Step 2: Create a profile for the user
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert([{
-            id: data.user.id,
-            email: email,
-            full_name: fullName,
-            created_at: new Date().toISOString()
-          }]);
-
+          .insert([{ id: data.user.id, email, full_name: fullName }]);
+  
         if (profileError) {
-          console.error('Profile creation failed:', profileError);
-          setError('Failed to create profile');
+          console.error('Profile creation error:', profileError);
+          setError(`Failed to create profile: ${profileError.message}`);
           return;
         }
-
-        setError('Please check your email to confirm your account');
+  
+        setError('Please check your email to confirm your account.');
         setTimeout(() => {
-          onClose();
+          onClose(); // Close the modal after 3 seconds
         }, 3000);
       }
     } catch (error) {
-      console.error('Signup error:', error);
-      setError('An error occurred during sign up');
+      console.error('Sign-up error:', error);
+      setError('An error occurred during sign-up.');
     } finally {
       setLoading(false);
     }
@@ -209,8 +184,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, onSignIn }
                 type="submit"
                 disabled={loading}
                 className={`w-full py-3 rounded-lg font-semibold transition-colors ${
-                  loading 
-                    ? 'bg-gray-400 cursor-not-allowed' 
+                  loading
+                    ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >

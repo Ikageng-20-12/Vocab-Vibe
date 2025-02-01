@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import AuthModal from '../components/AuthModal';
 
 interface LandingPageProps {
-  onSignIn: () => void;
+  onSignIn: () => void; // Callback when the user signs in
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
@@ -12,15 +12,17 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
     type: 'signin' | 'signup';
   }>({
     isOpen: false,
-    type: 'signin'
+    type: 'signin',
   });
 
+  // Open the auth modal
   const handleModalOpen = (type: 'signin' | 'signup') => {
     setModalState({ isOpen: true, type });
   };
 
+  // Close the auth modal
   const handleModalClose = () => {
-    setModalState(prev => ({ ...prev, isOpen: false }));
+    setModalState((prev) => ({ ...prev, isOpen: false }));
   };
 
   return (
@@ -37,7 +39,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
             VocabVibe
           </span>
         </h1>
-        
+
         <p className="text-xl text-gray-600 mb-8">
           SpeakWise – Speak Smarter, Score Higher!
         </p>
@@ -56,7 +58,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
           >
             Get Started
           </motion.button>
-          
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -68,6 +70,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
         </div>
       </motion.div>
 
+      {/* Auth Modal */}
       <AuthModal
         isOpen={modalState.isOpen}
         onClose={handleModalClose}
