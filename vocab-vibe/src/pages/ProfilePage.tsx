@@ -1,18 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Mail, Globe, Camera } from 'lucide-react';
+import supabase from '../util/supabaseClient'; // Import the Supabase client
 
 const ProfilePage = () => {
   const [profileData, setProfileData] = useState({
-    username: 'john_doe',
-    email: 'john@example.com',
-    fullName: 'John Doe',
-    bio: 'IELTS aspirant preparing for academic success',
-    country: 'United States',
+    username: '',
+    email: '',
+    fullName: '',
+    bio: '',
+    country: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch profile data when the component loads
+  useEffect(() => {
+    const fetchProfile = async () => {
+      // Step 1: Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Step 2: Fetch the user's profile
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('username, email, full_name, bio, country')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching profile:', error);
+        } else {
+          // Step 3: Set the profile data in state
+          setProfileData({
+            username: profile.username || '',
+            email: profile.email || '',
+            fullName: profile.full_name || '',
+            bio: profile.bio || '',
+            country: profile.country || '',
+          });
+        }
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle profile update logic here
+
+    // Step 1: Get the current user
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      // Step 2: Update the profile in the database
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          username: profileData.username,
+          email: profileData.email,
+          full_name: profileData.fullName,
+          bio: profileData.bio,
+          country: profileData.country,
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+      } else {
+        alert('Profile updated successfully!');
+      }
+    }
   };
 
   return (
@@ -101,7 +157,7 @@ const ProfilePage = () => {
                   onChange={(e) =>
                     setProfileData({ ...profileData, country: e.target.value })
                   }
-                  className="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue -500 focus:border-blue-500"
+                  className="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
