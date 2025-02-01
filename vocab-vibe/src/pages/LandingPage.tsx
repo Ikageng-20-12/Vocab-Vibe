@@ -2,8 +2,26 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import AuthModal from '../components/AuthModal';
 
-const LandingPage = () => {
-  const [authType, setAuthType] = useState<'signin' | 'signup' | null>(null);
+interface LandingPageProps {
+  onSignIn: () => void;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ onSignIn }) => {
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    type: 'signin' | 'signup';
+  }>({
+    isOpen: false,
+    type: 'signin'
+  });
+
+  const handleModalOpen = (type: 'signin' | 'signup') => {
+    setModalState({ isOpen: true, type });
+  };
+
+  const handleModalClose = () => {
+    setModalState(prev => ({ ...prev, isOpen: false }));
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex flex-col items-center justify-center p-4">
@@ -34,7 +52,7 @@ const LandingPage = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            onClick={() => setAuthType('signup')}
+            onClick={() => handleModalOpen('signup')}
           >
             Get Started
           </motion.button>
@@ -43,7 +61,7 @@ const LandingPage = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="px-8 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 transition-colors border-2 border-blue-600"
-            onClick={() => setAuthType('signin')}
+            onClick={() => handleModalOpen('signin')}
           >
             Sign In
           </motion.button>
@@ -51,9 +69,10 @@ const LandingPage = () => {
       </motion.div>
 
       <AuthModal
-        isOpen={authType !== null}
-        onClose={() => setAuthType(null)}
-        type={authType || 'signin'}
+        isOpen={modalState.isOpen}
+        onClose={handleModalClose}
+        type={modalState.type}
+        onSignIn={onSignIn}
       />
     </div>
   );
