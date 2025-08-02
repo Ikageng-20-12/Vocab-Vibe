@@ -1,28 +1,42 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Mic, Timer, Download, Trash2, RefreshCw, ArrowRight, Save } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Mic, Timer, ArrowRight, CheckCircle, RefreshCw } from 'lucide-react';
 import useAudioRecorder from '../components/AudioRecorder';
-import { questions, Question } from '../data/questions';
+import { questions } from '../data/questions';
+import Modal from 'react-modal';
+
+const API_URL = "http://localhost:8000";
 
 const TakeTestPage = () => {
   const [isStarted, setIsStarted] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [currentRecording, setCurrentRecording] = useState<Blob | null>(null);
-  const [timeLeft, setTimeLeft] = useState(120); // 2 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(0);
   const [currentPart, setCurrentPart] = useState<'part1' | 'part2' | 'part3'>('part1');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [recordings, setRecordings] = useState<{ [key: string]: Blob }>({});
   const [testComplete, setTestComplete] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackAudioUrl, setFeedbackAudioUrl] = useState<string | null>(null);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false); // For Part 2 preparation time
 
   const currentQuestions = questions.filter(q => q.part === currentPart);
   const currentQuestion = currentQuestions[currentQuestionIndex];
 
+  // Timer logic
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (isRecording && timeLeft > 0) {
+    if ((isRecording || isPreparing) && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            stopRecording();
+            if (isPreparing) {
+              setIsPreparing(false);
+              startRecording(); // Start recording after preparation time
+            } else {
+              stopRecording();
+              handleNextQuestion();
+            }
           }
           return prev - 1;
         });
@@ -31,7 +45,7 @@ const TakeTestPage = () => {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isRecording, timeLeft]);
+  }, [isRecording, isPreparing, timeLeft]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -50,14 +64,12 @@ const TakeTestPage = () => {
   const { startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleRecordingComplete,
     isRecording,
-    onRecordingStart: () => {
-      setIsRecording(true);
-      setTimeLeft(currentPart === 'part2' ? 120 : 60); // 2 minutes for Part 2, 1 minute for others
-    },
+    onRecordingStart: () => setIsRecording(true),
     onRecordingStop: () => setIsRecording(false),
   });
 
   const handleNextQuestion = () => {
+    stopRecording();
     if (currentQuestionIndex < currentQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
@@ -65,59 +77,58 @@ const TakeTestPage = () => {
       if (currentPart === 'part1') {
         setCurrentPart('part2');
         setCurrentQuestionIndex(0);
+        setIsPreparing(true); // Start preparation time for Part 2
+        setTimeLeft(60); // 1 minute preparation time
       } else if (currentPart === 'part2') {
         setCurrentPart('part3');
         setCurrentQuestionIndex(0);
       } else {
         setTestComplete(true);
+        handleUploadAndAnalyzeAll(); // Upload and analyze all recordings at the end of the test
       }
     }
     setCurrentRecording(null);
   };
 
-  const handleDownload = (questionId: string) => {
-    const blob = recordings[questionId];
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `test-recording-${questionId}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleDone = () => {
+    stopRecording();
+    setTestComplete(true);
+    handleUploadAndAnalyzeAll(); // Upload and analyze all recordings at the end of the test
   };
 
-  const handleDelete = (questionId: string) => {
-    setRecordings(prev => {
-      const newRecordings = { ...prev };
-      delete newRecordings[questionId];
-      return newRecordings;
-    });
-    setCurrentRecording(null);
-  };
+  // Use a backend endpoint for test mode analysis (multi–file upload)
+  const handleUploadAndAnalyzeAll = async () => {
+    try {
+      const formData = new FormData();
+      Object.entries(recordings).forEach(([questionId, blob]) => {
+        formData.append('files', blob, `test-recording-${questionId}.webm`);
+      });
 
-  const handleDownloadAll = () => {
-    Object.entries(recordings).forEach(([questionId, blob]) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `test-recording-${questionId}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
+      const response = await fetch(`${API_URL}/upload-test-audio/`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      setFeedback(data.feedback_text);
+      setFeedbackAudioUrl(data.feedback_audio_path);
+      setIsFeedbackModalOpen(true);
+    } catch (error) {
+      console.error('Error uploading and analyzing audio:', error);
+    }
   };
 
   const handleRestartTest = () => {
     setIsStarted(false);
     setIsRecording(false);
     setCurrentRecording(null);
-    setTimeLeft(120);
+    setTimeLeft(0);
     setCurrentPart('part1');
     setCurrentQuestionIndex(0);
     setRecordings({});
     setTestComplete(false);
+    setFeedback(null);
+    setFeedbackAudioUrl(null);
+    setIsPreparing(false);
   };
 
   if (testComplete) {
@@ -129,15 +140,15 @@ const TakeTestPage = () => {
             You have completed all parts of the IELTS Speaking Test simulation.
           </p>
           <button
-            onClick={handleDownloadAll}
-            className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors inline-flex items-center"
+            onClick={() => setIsFeedbackModalOpen(true)}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors inline-flex items-center"
           >
-            <Download size={20} className="mr-2" />
-            Download All Recordings
+            <CheckCircle size={20} className="mr-2" />
+            View Feedback
           </button>
           <button
             onClick={handleRestartTest}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors inline-flex items-center mt-4"
+            className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors inline-flex items-center mt-4"
           >
             <RefreshCw size={20} className="mr-2" />
             Restart Test
@@ -149,42 +160,45 @@ const TakeTestPage = () => {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-800 mb-8">IELTS Speaking Test</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-8">Full IELTS Speaking Test</h1>
 
       {!isStarted ? (
         <div className="bg-white rounded-lg shadow-lg p-8">
           <h2 className="text-2xl font-semibold mb-6">Test Instructions</h2>
-          
+          <p className="text-gray-700 mb-6">
+            Test Mode: Full IELTS Speaking Test with 3 sections:
+            <br />
+            • Part 1: Introduction
+            <br />
+            • Part 2: Long Turn (Cue Card Activity)
+            <br />
+            • Part 3: Two-Way Discussion
+            <br />
+            At the end of the test, you will receive feedback on your speaking performance.
+          </p>
           <div className="space-y-6 mb-8">
             <TestPart
-              part="Part 1"
+              part="Introduction"
               duration="4-5 minutes"
-              description="Introduction and interview about familiar topics"
+              description="Interview about familiar topics."
             />
             <TestPart
-              part="Part 2"
+              part="Long Turn"
               duration="3-4 minutes"
-              description="Individual long turn speaking about a particular topic"
+              description="Prepare and speak on a cue card topic for a long turn."
             />
             <TestPart
-              part="Part 3"
+              part="Two-Way Discussion"
               duration="4-5 minutes"
-              description="Two-way discussion about more abstract topics"
+              description="Engage in a discussion on more abstract topics."
             />
           </div>
-
-          <div className="bg-blue-50 p-4 rounded-lg mb-8">
-            <h3 className="font-semibold text-blue-800 mb-2">Tips for Success</h3>
-            <ul className="list-disc list-inside text-blue-700 space-y-2">
-              <li>Speak clearly and at a natural pace</li>
-              <li>Use a variety of vocabulary and grammar structures</li>
-              <li>Stay on topic and provide relevant examples</li>
-              <li>Don't worry about making small mistakes</li>
-            </ul>
-          </div>
-
           <button
-            onClick={() => setIsStarted(true)}
+            onClick={() => {
+              setIsStarted(true);
+              startRecording();
+              setTimeLeft(60); // 1 minute for Part 1 questions
+            }}
             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
           >
             Begin Test
@@ -200,8 +214,14 @@ const TakeTestPage = () => {
                   <span className="text-red-500 font-medium">Recording...</span>
                 </>
               )}
+              {isPreparing && (
+                <>
+                  <Timer className="text-blue-500" size={24} />
+                  <span className="text-blue-500 font-medium">Preparing...</span>
+                </>
+              )}
               <span className="font-medium text-gray-600">
-                Part {currentPart.charAt(4)} - Question {currentQuestionIndex + 1}/{currentQuestions.length}
+                {currentPart === 'part1' ? 'Introduction' : currentPart === 'part2' ? 'Long Turn' : 'Two-Way Discussion'} - Question {currentQuestionIndex + 1}/{currentQuestions.length}
               </span>
             </div>
             <div className="flex items-center bg-gray-100 px-4 py-2 rounded-lg">
@@ -214,7 +234,6 @@ const TakeTestPage = () => {
             <h2 className="text-xl font-semibold mb-4">Current Question:</h2>
             <div className="bg-gray-50 p-6 rounded-lg">
               <p className="text-lg text-gray-700 whitespace-pre-line">{currentQuestion.text}</p>
-              
               {currentQuestion.followUp && (
                 <div className="mt-4">
                   <h4 className="font-medium text-gray-700 mb-2">Follow-up Questions:</h4>
@@ -229,55 +248,20 @@ const TakeTestPage = () => {
           </div>
 
           <div className="flex space-x-4">
-            {!currentRecording ? (
+            <button
+              onClick={handleNextQuestion}
+              className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
+            >
+              <ArrowRight size={20} className="mr-2" />
+              Next Question
+            </button>
+            {currentPart === 'part3' && currentQuestionIndex === currentQuestions.length - 1 && (
               <button
-                onClick={startRecording}
-                disabled={isRecording}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
+                onClick={handleDone}
+                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center"
               >
-                <Mic size={20} className="mr-2" />
-                Start Recording
-              </button>
-            ) : (
-              <div className="flex-1 flex space-x-2">
-                <button
-                  onClick={() => handleDelete(currentQuestion.id)}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-colors flex items-center justify-center"
-                >
-                  <Trash2 size={20} className="mr-2" />
-                  Delete
-                </button>
-                <button
-                  onClick={() => handleDownload(currentQuestion.id)}
-                  className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center"
-                >
-                  <Download size={20} className="mr-2" />
-                  Download
-                </button>
-                
-              </div>
-            )}
-            
-            {isRecording ? (
-              <button
-                onClick={stopRecording}
-                className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-colors flex items-center justify-center"
-              >
-                <Mic size={20} className="mr-2" />
-                Stop Recording
-              </button>
-            ) : (
-              <button
-                onClick={handleNextQuestion}
-                disabled={!currentRecording}
-                className={`flex-1 ${
-                  currentRecording 
-                    ? 'bg-blue-600 hover:bg-blue-700' 
-                    : 'bg-gray-400 cursor-not-allowed'
-                } text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center`}
-              >
-                <ArrowRight size={20} className="mr-2" />
-                Next Question
+                <CheckCircle size={20} className="mr-2" />
+                Done
               </button>
             )}
           </div>
@@ -294,6 +278,28 @@ const TakeTestPage = () => {
           )}
         </div>
       )}
+
+      <Modal
+        isOpen={isFeedbackModalOpen}
+        onRequestClose={() => setIsFeedbackModalOpen(false)}
+        contentLabel="Feedback Modal"
+        className="fixed inset-0 flex items-center justify-center z-50"
+        overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-40"
+      >
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-lg w-full">
+          <h2 className="text-xl font-semibold mb-4">Feedback</h2>
+          {feedback && <p className="text-gray-700 mb-4">{feedback}</p>}
+          {feedbackAudioUrl && (
+            <audio controls src={`${API_URL}/${feedbackAudioUrl}`} className="w-full" />
+          )}
+          <button
+            onClick={() => setIsFeedbackModalOpen(false)}
+            className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

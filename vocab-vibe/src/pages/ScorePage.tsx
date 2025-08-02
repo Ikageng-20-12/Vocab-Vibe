@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, ChevronRight, TrendingUp, Clock, Volume2, Mic, BookOpen } from 'lucide-react';
+import { Download, TrendingUp, Clock, Volume2, Mic, BookOpen } from 'lucide-react';
 
 interface TestScore {
   date: string;

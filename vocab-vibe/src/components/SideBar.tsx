@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Mic, Book, BarChart2, User, BookOpen, LogOut } from 'lucide-react';
 

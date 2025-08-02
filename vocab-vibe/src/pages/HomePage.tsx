@@ -18,7 +18,9 @@ const HomePage = () => {
   useEffect(() => {
     const fetchData = async () => {
       // Step 1: Get the current user
+      console.log("fetchData running");
       const { data: { user } } = await supabase.auth.getUser();
+      console.log("user:", user);
 
       if (user) {
         // Step 2: Fetch the user's profile

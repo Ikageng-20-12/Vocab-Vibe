@@ -1,0 +1,42 @@
+version: '3'
+
+# Vocab-Vibe Application Services
+# ------------------------------
+# This docker-compose file sets up both frontend and backend services
+# for the Vocab-Vibe application. Run with: docker-compose up
+
+services:
+  # Frontend Service (React/Vue app)
+  # -------------------------------
+  # Builds and serves the user interface on port 5173
+  frontend:
+    build:
+      context: .  # Root directory contains frontend code
+      dockerfile: Dockerfile  # Frontend build instructions
+    ports:
+      - "5173:80"  # Access the UI at http://localhost:5173
+    depends_on:
+      - backend  # Makes sure backend is available before starting
+    networks:
+      - vocab-vibe-network
+
+  # Backend Service (API server)
+  # --------------------------
+  # Handles data processing, authentication, and database operations
+  backend:
+    build:
+      context: ./backend  # Backend code directory
+      dockerfile: Dockerfile  # Backend build instructions
+    ports:
+      - "8000:8000"  # Access the API at http://localhost:8000
+    volumes:
+      - ./backend/temp:/app/temp  # Persists temporary files between restarts
+    networks:
+      - vocab-vibe-network
+
+# Network Configuration
+# -------------------
+# Creates an isolated network for service communication
+networks:
+  vocab-vibe-network:
+    driver: bridge  # Standard network type for container communication

@@ -1,7 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import  { useState, useCallback, useEffect } from 'react';
 import { Mic, Play, Download, Trash2, RefreshCw } from 'lucide-react';
 import useAudioRecorder from '../components/AudioRecorder';
-import { questions, Question } from '../data/questions';
+import { questions } from '../data/questions';
+import Modal from 'react-modal';
+import FeedbackDisplay from '../components/FeedbackDisplay';
+import PracticeHistory from '../components/PracticeHistory';
+
+// Set the app element for accessibility (adjust the selector if needed)
+Modal.setAppElement('#root');
+
+const API_URL = "http://localhost:8000";
 
 const PracticePage = () => {
   const [selectedPart, setSelectedPart] = useState<string>('part1');
@@ -10,6 +18,10 @@ const PracticePage = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackAudioUrl, setFeedbackAudioUrl] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [practiceResults, setPracticeResults] = useState<any[]>([]);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
   const currentQuestions = questions.filter(q => q.part === selectedPart);
   const currentQuestion = currentQuestions[currentQuestionIndex];
@@ -49,14 +61,20 @@ const PracticePage = () => {
   };
 
   const handleNextQuestion = () => {
-    setCurrentQuestionIndex(prev => 
+    setCurrentQuestionIndex(prev =>
       prev < currentQuestions.length - 1 ? prev + 1 : 0
     );
+    // Reset feedback when moving to the next question
+    setFeedback(null);
+    setFeedbackAudioUrl(null);
   };
 
   const handleRetake = () => {
     handleDelete(currentQuestion.id);
     startRecording();
+    // Reset feedback when retaking the question
+    setFeedback(null);
+    setFeedbackAudioUrl(null);
   };
 
   const handleUploadAndAnalyze = async (questionId: string) => {
@@ -64,23 +82,43 @@ const PracticePage = () => {
     const formData = new FormData();
     formData.append('file', blob, `practice-recording-${questionId}.webm`);
 
+    setIsAnalyzing(true);
+
     try {
-      const response = await fetch('http://localhost:8000/upload-audio/', {
+      const response = await fetch(`${API_URL}/upload-audio/`, {
         method: 'POST',
         body: formData,
       });
       const data = await response.json();
       setFeedback(data.feedback_text);
       setFeedbackAudioUrl(data.feedback_audio_path);
+      setIsModalOpen(true);
+      fetchPracticeResults(); // Fetch the updated practice results
     } catch (error) {
       console.error('Error uploading and analyzing audio:', error);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
+
+  const fetchPracticeResults = async () => {
+    try {
+      const response = await fetch(`${API_URL}/practice-tests/`);
+      const data = await response.json();
+      console.log("Practice results:", data);
+      setPracticeResults(data);
+    } catch (error) {
+      console.error("Error fetching practice results:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchPracticeResults();
+  }, []);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800 mb-8">Practice Mode</h1>
-
       <div className="bg-white rounded-lg shadow-lg p-8">
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Select Test Part</h2>
@@ -91,6 +129,9 @@ const PracticePage = () => {
                 onClick={() => {
                   setSelectedPart(part);
                   setCurrentQuestionIndex(0);
+                  // Reset feedback when changing the test part
+                  setFeedback(null);
+                  setFeedbackAudioUrl(null);
                 }}
                 className={`p-4 rounded-lg border-2 ${
                   selectedPart === part
@@ -119,7 +160,6 @@ const PracticePage = () => {
           
           <div className="bg-gray-50 p-6 rounded-lg mb-4">
             <p className="text-lg whitespace-pre-line">{currentQuestion.text}</p>
-            
             {currentQuestion.followUp && (
               <div className="mt-4">
                 <h4 className="font-medium text-gray-700 mb-2">Follow-up Questions:</h4>
@@ -153,7 +193,6 @@ const PracticePage = () => {
                 </>
               )}
             </button>
-            
             <button
               onClick={handleNextQuestion}
               className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors flex items-center justify-center"
@@ -196,23 +235,105 @@ const PracticePage = () => {
               <button
                 onClick={() => handleUploadAndAnalyze(currentQuestion.id)}
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                disabled={isAnalyzing}
               >
-                <Play size={16} className="mr-2" />
-                Analyze
+                {isAnalyzing ? (
+                  <>
+                    <RefreshCw size={16} className="mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Play size={16} className="mr-2" />
+                    Analyze
+                  </>
+                )}
               </button>
             </div>
           </div>
         )}
 
-        {feedback && (
-          <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3">Feedback</h3>
-            <p className="text-gray-700 mb-4">{feedback}</p>
-            {feedbackAudioUrl && (
-              <audio controls src={feedbackAudioUrl} className="w-full" />
+        <Modal
+          isOpen={isModalOpen}
+          onRequestClose={() => {
+            setIsModalOpen(false);
+            setFeedback(null); // Reset feedback when closing the modal
+            setFeedbackAudioUrl(null);
+          }}
+          shouldCloseOnOverlayClick={true}
+          ariaHideApp={false}
+          contentLabel="Feedback Modal"
+          className="fixed inset-0 flex items-center justify-center z-50"
+          overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-40"
+        >
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-lg w-full">
+            <h2 className="text-xl font-semibold mb-4">Feedback</h2>
+            {(feedback || feedbackAudioUrl) && (
+              <FeedbackDisplay 
+                result={{ 
+                  transcribed_text: '', 
+                  feedback_text: feedback || '', 
+                  feedback_audio_url: feedbackAudioUrl || '' 
+                }} 
+              />
             )}
+            <button
+              onClick={() => {
+                setIsModalOpen(false);
+                setFeedback(null); // Reset feedback when closing the modal
+                setFeedbackAudioUrl(null);
+              }}
+              className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+            >
+              Close
+            </button>
           </div>
-        )}
+        </Modal>
+
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Previous Practice Results</h2>
+            <button
+              onClick={() => {
+                fetchPracticeResults();
+                setIsFeedbackModalOpen(true);
+              }}
+              className="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition-colors"
+            >
+              View All Feedback
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {practiceResults.map((result, index) => (
+              <div key={index} className="bg-gray-50 p-4 rounded-lg shadow">
+                <p className="text-gray-700 mb-2">Transcribed Text: {result.transcribed_text}</p>
+                <p className="text-gray-700 mb-2">Feedback: {result.feedback_text}</p>
+                <audio controls src={`${API_URL}/${result.feedback_audio_url}`} className="w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Modal
+          isOpen={isFeedbackModalOpen}
+          onRequestClose={() => setIsFeedbackModalOpen(false)}
+          shouldCloseOnOverlayClick={true}
+          ariaHideApp={false}
+          contentLabel="All Feedback Modal"
+          className="fixed inset-0 flex items-center justify-center z-50"
+          overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-40"
+        >
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-3xl w-full">
+            <h2 className="text-xl font-semibold mb-4">All Feedback</h2>
+            <PracticeHistory results={practiceResults} />
+            <button
+              onClick={() => setIsFeedbackModalOpen(false)}
+              className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
       </div>
     </div>
   );

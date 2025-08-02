@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Virtual environments
+venv/
+myenv/
+env/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+#large files in the backend
+backend/myenv/Lib/site-packages/torch/lib/dnnl.lib
+backend/myenv/Lib/site-packages/torch/lib/torch_cpu.dll
+backend/myenv/Lib/site-packages/llvmlite/binding/llvmlite.dll

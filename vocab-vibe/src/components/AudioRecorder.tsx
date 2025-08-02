@@ -9,7 +9,6 @@ interface UseAudioRecorderProps {
 
 const useAudioRecorder = ({
   onRecordingComplete,
-  isRecording,
   onRecordingStart,
   onRecordingStop,
 }: UseAudioRecorderProps) => {
